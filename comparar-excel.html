@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparar Códigos Excel</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; color: #333; padding: 20px; max-width: 900px; margin: auto; }
+        h1 { color: #2c3e50; margin-bottom: 8px; }
+        p.subtitle { color: #7f8c8d; margin-bottom: 24px; font-size: 14px; }
+        .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .file-area { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+        @media (max-width: 600px) { .file-area { grid-template-columns: 1fr; } }
+        .file-box { border: 2px dashed #bdc3c7; border-radius: 10px; padding: 24px; text-align: center; background: #fafbfc; cursor: pointer; transition: all 0.2s; }
+        .file-box:hover { border-color: #3498db; background: #f0f7ff; }
+        .file-box input[type="file"] { display: none; }
+        .file-box .label { font-weight: 600; color: #2c3e50; margin-bottom: 8px; display: block; }
+        .file-box .filename { font-size: 13px; color: #7f8c8d; margin-top: 10px; }
+        .controls { margin-bottom: 20px; }
+        .btn { background: #3498db; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2980b9; }
+        .btn:disabled { background: #95a5a6; cursor: not-allowed; }
+        .btn-success { background: #2ecc71; }
+        .btn-success:hover { background: #27ae60; }
+        .btn-outline { background: transparent; border: 2px solid #3498db; color: #3498db; margin-left: 10px; }
+        .btn-outline:hover { background: #f0f7ff; }
+        .results { margin-top: 24px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #ecf0f1; }
+        th { background: #f8f9fa; font-weight: 600; color: #2c3e50; font-size: 13px; text-transform: uppercase; }
+        tr:nth-child(even) { background: #fcfcfc; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+        .badge-falta { background: #fdedec; color: #c0392b; }
+        .badge-existe { background: #e9f7ef; color: #27ae60; }
+        .summary { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+        .stat { background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); flex: 1; min-width: 140px; }
+        .stat .valor { font-size: 24px; font-weight: 700; color: #2c3e50; }
+        .stat .etiqueta { font-size: 12px; color: #7f8c8d; margin-top: 4px; text-transform: uppercase; }
+        .stat .valor.falta { color: #c0392b; }
+        .stat .valor.total { color: #2980b9; }
+        .empty { text-align: center; color: #95a5a6; padding: 40px; }
+        .warning { background: #fcf8e3; border: 1px solid #faebcc; color: #8a6d3b; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+    </style>
+</head>
+<body>
+
+    <h1>📊 Comparador de Códigos Excel</h1>
+    <p class="subtitle">Sube dos archivos Excel y descubre qué códigos están en el primero pero faltan en el segundo.</p>
+
+    <div class="card">
+        <div class="file-area">
+            <div class="file-box" onclick="document.getElementById('archivo1').click()">
+                <span class="label">📄 Archivo 1 (Referencia / Base)</span>
+                <input type="file" id="archivo1" accept=".xlsx,.xls,.csv" onchange="seleccionarArchivo(1, this)">
+                <span class="filename" id="nombre1">Ninguno seleccionado</span>
+            </div>
+            <div class="file-box" onclick="document.getElementById('archivo2').click()">
+                <span class="label">📄 Archivo 2 (Comparar contra)</span>
+                <input type="file" id="archivo2" accept=".xlsx,.xls,.csv" onchange="seleccionarArchivo(2, this)">
+                <span class="filename" id="nombre2">Ninguno seleccionado</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <label style="margin-right: 12px; font-weight: 600; color: #2c3e50;">
+                <input type="checkbox" id="ignorarMayusculas" checked> Ignorar mayúsculas/minúsculas
+            </label>
+            <label style="margin-left: 20px; font-weight: 600; color: #2c3e50;">
+                <input type="checkbox" id="ignorarEspacios" checked> Ignorar espacios al inicio/final
+            </label>
+            <button class="btn btn-success" id="btnComparar" onclick="comparar()" disabled>🔍 Comparar archivos</button>
+            <button class="btn btn-outline" id="btnDescargar" onclick="descargarResultados()" style="display:none;">⬇️ Descargar resultados (CSV)</button>
+        </div>
+
+        <div id="resultado" class="results" style="display:none;"></div>
+    </div>
+
+    <script>
+        let datos1 = [], datos2 = [];
+
+        function seleccionarArchivo(numero, input) {
+            const file = input.files[0];
+            if (!file) return;
+            document.getElementById('nombre' + numero).textContent = file.name;
+            document.getElementById('nombre' + numero).style.color = '#27ae60';
+
+            const lector = new FileReader();
+            lector.onload = function(e) {
+                const bytes = new Uint8Array(lector.result);
+                procesarExcel(bytes, file.name, numero);
+            };
+            lector.readAsArrayBuffer(file);
+        }
+
+        function procesarExcel(bytes, nombreArchivo, numero) {
+            // Detectar si es CSV
+            if (nombreArchivo.toLowerCase().endsWith('.csv')) {
+                const texto = new TextDecoder().decode(bytes);
+                const filas = texto.split(/\r?\n/).filter(f => f.trim());
+                const codigos = filas.map(f => {
+                    const partes = f.split(',');
+                    return partes[0] ? partes[0].trim() : '';
+                }).filter(c => c);
+                if (numero === 1) datos1 = codigos; else datos2 = codigos;
+            } else {
+                // Para .xlsx/.xls usamos la librería SheetJS (se carga por CDN)
+                if (typeof XLSX === 'undefined') {
+                    alert('Cargando librería de Excel... por favor intenta de nuevo en unos segundos.');
+                    setTimeout(() => procesarExcel(bytes, nombreArchivo, numero), 1500);
+                    return;
+                }
+                const libro = XLSX.read(bytes, { type: 'array' });
+                const hoja = libro.Sheets[libro.SheetNames[0]];
+                const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
+                // Tomamos la primera columna (índice 0) y saltamos encabezado si parece texto
+                let inicio = 0;
+                if (filas.length > 0 && isNaN(filas[0][0])) inicio = 1;
+                const codigos = filas.slice(inicio).map(f => {
+                    return f[0] ? String(f[0]).trim() : '';
+                }).filter(c => c);
+                if (numero === 1) datos1 = codigos; else datos2 = codigos;
+            }
+
+            actualizarEstado();
+        }
+
+        function actualizarEstado() {
+            const btn = document.getElementById('btnComparar');
+            btn.disabled = !(datos1.length > 0 && datos2.length > 0);
+        }
+
+        function normalizar(texto, ignorarMayusculas, ignorarEspacios) {
+            let t = String(texto);
+            if (ignorarEspacios) t = t.trim();
+            if (ignorarMayusculas) t = t.toLowerCase();
+            return t;
+        }
+
+        function comparar() {
+            const ignMay = document.getElementById('ignorarMayusculas').checked;
+            const ignEsp = document.getElementById('ignorarEspacios').checked;
+
+            const set2 = new Set(datos2.map(c => normalizar(c, ignMay, ignEsp)));
+            const faltantes = [];
+            const existentes = [];
+
+            datos1.forEach(codigo => {
+                const normalizado = normalizar(codigo, ignMay, ignEsp);
+                if (set2.has(normalizado)) {
+                    existentes.push(codigo);
+                } else {
+                    faltantes.push(codigo);
+                }
+            });
+
+            mostrarResultado(faltantes, existentes, datos1.length, datos2.length);
+        }
+
+        function mostrarResultado(faltantes, existentes, total1, total2) {
+            const contenedor = document.getElementById('resultado');
+            contenedor.style.display = 'block';
+
+            const html = `
+                <div class="summary">
+                    <div class="stat"><div class="valor total">${total1}</div><div class="etiqueta">Códigos en Archivo 1</div></div>
+                    <div class="stat"><div class="valor total">${total2}</div><div class="etiqueta">Códigos en Archivo 2</div></div>
+                    <div class="stat"><div class="valor falta">${faltantes.length}</div><div class="etiqueta">Faltan en Archivo 2</div></div>
+                    <div class="stat"><div class="valor">${existentes.length}</div><div class="etiqueta">Coinciden en ambos</div></div>
+                </div>
+
+                ${faltantes.length > 0 ? `
+                    <div class="warning">⚠️ Se encontraron <strong>${faltantes.length}</strong> código(s) que están en el Archivo 1 pero NO en el Archivo 2:</div>
+                    <table>
+                        <thead><tr><th>#</th><th>Código faltante</th><th>Estado</th></tr></thead>
+                        <tbody>
+                            ${faltantes.map((c, i) => `<tr><td>${i+1}</td><td><strong>${escapeHtml(c)}</strong></td><td><span class="badge badge-falta">FALTA</span></td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                ` : `
+                    <div style="text-align:center; padding: 30px; color: #27ae60; font-weight: 600;">
+                        ✅ Todos los códigos del Archivo 1 están presentes en el Archivo 2.
+                    </div>
+                `}
+            `;
+
+            contenedor.innerHTML = html;
+
+            // Guardar para descarga
+            window.resultadosFaltantes = faltantes;
+            window.resultadosExistentes = existentes;
+
+            document.getElementById('btnDescargar').style.display = 'inline-block';
+            document.getElementById('btnDescargar').textContent = '⬇️ Descargar códigos faltantes (CSV)';
+        }
+
+        function descargarResultados() {
+            const faltantes = window.resultadosFaltantes || [];
+            if (faltantes.length === 0) {
+                alert('No hay códigos faltantes para descargar.');
+                return;
+            }
+            let csv = 'Codigo,Estado\n';
+            faltantes.forEach(c => csv += `"${c.replace(/"/g, '""')}",FALTA\n`);
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const enlace = document.createElement('a');
+            enlace.href = url;
+            enlace.download = 'codigos_faltantes.csv';
+            enlace.click();
+        }
+
+        function escapeHtml(texto) {
+            const div = document.createElement('div');
+            div.textContent = texto;
+            return div.innerHTML;
+        }
+
+        // Cargar SheetJS por CDN para leer .xlsx/.xls
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/package.min.js';
+        script.onload = () => {
+            // Si ya había archivos seleccionados antes de cargar, reprocesar
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
